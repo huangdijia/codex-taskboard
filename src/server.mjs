@@ -26,7 +26,7 @@ const icon = {
   src: `data:image/svg+xml,${encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.33"><rect x="2.5" y="3" width="15" height="14" rx="2"/><path d="M7.5 3v14M10.5 7h4M10.5 10h4M10.5 13h3"/></svg>')}`,
   mimeType: 'image/svg+xml', sizes: ['20x20'],
 };
-const server = new McpServer({ name: 'codex-taskboard', version: '0.2.6', icons: [icon] }, {
+const server = new McpServer({ name: 'codex-taskboard', version: '0.2.8', icons: [icon] }, {
   instructions: 'Read Codex thread status with taskboard.list_threads. Status is inferred from recorded events, not live process telemetry. User acceptance and reopening are performed only through the Codex TaskBoard app.',
 });
 const threadSchema = z.object({

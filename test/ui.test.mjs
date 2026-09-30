@@ -11,6 +11,12 @@ class Node {
   constructor() {
     this.children = []; this.dataset = {}; this.value = ''; this.checked = false; this.listeners = {};
     this.className = '';
+    const properties = new Map();
+    this.style = {
+      setProperty(name, value, priority = '') { properties.set(name, { value, priority }); },
+      getPropertyValue(name) { return properties.get(name)?.value || ''; },
+      getPropertyPriority(name) { return properties.get(name)?.priority || ''; },
+    };
     this.classList = {
       add: (...names) => { this.className = [...new Set([...this.className.split(' '), ...names])].join(' ').trim(); },
       remove: (...names) => { this.className = this.className.split(' ').filter((name) => !names.includes(name)).join(' '); },
@@ -45,7 +51,7 @@ const thread = (status = 'Review', overrides = {}) => ({
 const result = (threads) => ({ structuredContent: { threads, workspaces: [], errors: [], stale: false } });
 
 async function harness(threads, workspaces = [], options = {}) {
-  const ids = Object.fromEntries(['search', 'search-toggle', 'search-dialog', 'search-results', 'search-status', 'search-error', 'theme-toggle', 'workspace', 'show-archived', 'show-subagents', 'refresh', 'refresh-label', 'content', 'summary', 'notice'].map((id) => [id, new Node()]));
+  const ids = Object.fromEntries(['search', 'search-toggle', 'search-dialog', 'search-results', 'search-status', 'search-error', 'theme-toggle', 'workspace', 'project-picker', 'project-toggle', 'project-label', 'project-menu', 'project-search', 'project-list', 'project-empty', 'show-archived', 'show-subagents', 'refresh', 'refresh-label', 'content', 'summary', 'notice'].map((id) => [id, new Node()]));
   const allNodes = () => {
     const walk = (node) => [node, ...node.children.flatMap(walk)];
     return Object.values(ids).flatMap(walk);
@@ -55,7 +61,8 @@ async function harness(threads, workspaces = [], options = {}) {
     return allNodes().filter((node) => node.className.split(' ').includes(name) && (!attribute || attribute in node.dataset));
   };
   const calls = []; const links = []; let poll; let app;
-  const root = new Node();
+  const root = new Node(); const body = new Node();
+  root.style.setProperty("background", "white"); body.style.setProperty("background", "white");
   class App {
     constructor() { app = this; }
     connect() { return Promise.resolve(); }
@@ -63,7 +70,9 @@ async function harness(threads, workspaces = [], options = {}) {
     callServerTool(args) { return new Promise((resolve) => calls.push({ args, resolve })); }
     openLink(args) { return new Promise((resolve, reject) => links.push({ args, resolve, reject })); }
   }
-  const doc = { documentElement: root, hidden: false, activeElement: null, getElementById: (id) => ids[id], querySelectorAll: query, addEventListener() {} };
+  const doc = { documentElement: root, body, hidden: false, activeElement: null, listeners: {}, getElementById: (id) => ids[id], querySelectorAll: query, addEventListener(name, handler) { this.listeners[name] = handler; } };
+  ids["project-picker"].append(ids["project-toggle"], ids["project-menu"]);
+  ids["project-menu"].append(ids["project-search"], ids["project-list"], ids["project-empty"]);
   const makeNode = () => { const node = new Node(); node.onFocus = (value) => { doc.activeElement = value; }; return node; };
   for (const node of Object.values(ids)) node.onFocus = (value) => { doc.activeElement = value; };
   doc.createElement = makeNode; doc.createElementNS = makeNode;
@@ -83,15 +92,22 @@ async function harness(threads, workspaces = [], options = {}) {
 }
 
 test('project picker and card share saved names while filtering keeps the full path', async () => {
-  const h = await harness([thread()], [{ cwd: '/code/test', name: '产品项目' }]);
+  const h = await harness([thread()], [{ cwd: '', name: '无项目' }, { cwd: '/code/test', name: '产品项目' }]);
+  assert.equal(h.ids.workspace.options.length, 2, 'empty cwd cannot duplicate the All projects option');
   assert.equal(h.ids.workspace.options[0].textContent, '所有项目');
   assert.equal(h.ids.workspace.options[1].textContent, '产品项目');
   assert.equal(h.ids.workspace.options[1].title, '/code/test');
   const tag = h.cards()[0].children.find((node) => node.className === 'tags').children[0];
   assert.equal(tag.children[1].textContent, '产品项目');
   assert.equal(tag.title, '项目：产品项目\n/code/test');
-  h.ids.workspace.value = '/code/test';
-  h.ids.workspace.listeners.change();
+  assert.equal(h.ids['project-label'].textContent, '所有项目');
+  h.ids['project-toggle'].listeners.click();
+  assert.equal(h.doc.activeElement, h.ids['project-search']);
+  assert.equal(h.ids['project-toggle']['aria-expanded'], 'true');
+  h.ids['project-list'].children[1].listeners.click();
+  assert.equal(h.ids['project-menu'].hidden, true);
+  assert.equal(h.doc.activeElement, h.ids['project-toggle']);
+  assert.equal(h.ids['project-label'].textContent, '产品项目');
   assert.equal(h.calls[0].args.arguments.cwd, '/code/test');
   const filtered = result([thread()]);
   filtered.structuredContent.workspaces = [{ cwd: '/code/test', name: '产品项目' }];
@@ -329,20 +345,25 @@ test('search loading and read failure are distinct from an empty result', async 
   searchKey(h, 'Enter'); assert.equal(h.links.length, 0);
 });
 
-test('thread read errors aggregate missing counts while retaining snapshots and global reasons', async () => {
-  const saved = thread('Review', { title: '保留的聊天标题' }); const h = await harness([saved]);
+test('missing historical files hide the banner but retain stale cards and other read errors', async () => {
+  const saved = thread('Review', { title: '保留的聊天标题', stale: true }); const h = await harness([saved]);
   const cases = [
-    [[{ code: 'ROLLOUT_MISSING', threadId: saved.id, message: 'generic' }], /1 个聊天的会话文件缺失，无法确认最新状态/],
-    [[{ code: 'ROLLOUT_MISSING', threadId: saved.id, message: 'generic' }, { code: 'ROLLOUT_MISSING', threadId: 'another', message: 'generic' }], /2 个聊天的会话文件缺失，无法确认最新状态/],
+    [[{ code: 'ROLLOUT_MISSING', threadId: saved.id, message: 'generic' }], ''],
+    [[{ code: 'ROLLOUT_MISSING', threadId: saved.id, message: 'generic' }, { code: 'ROLLOUT_MISSING', threadId: 'another', message: 'generic' }], ''],
     [[{ code: 'ROLLOUT_FORMAT_ERROR', threadId: saved.id, message: 'generic' }], /1 个聊天的会话记录格式异常，无法确认最新状态/],
     [[{ code: 'ROLLOUT_READ_ERROR', threadId: saved.id, message: 'generic' }], /1 个聊天的会话记录无法读取，无法确认最新状态/],
     [[{ code: 'NATIVE_READ_ERROR', message: '原生数据库读取失败' }], /^原生数据库读取失败$/],
+    [[{ code: 'ROLLOUT_MISSING', threadId: saved.id, message: 'generic' }, { code: 'NATIVE_READ_ERROR', message: '原生数据库读取失败' }], /^原生数据库读取失败$/],
   ];
   for (const [errors, expected] of cases) {
     h.poll(); const call = h.calls.at(-1); const response = result([saved]);
     Object.assign(response.structuredContent, { stale: true, errors }); call.resolve(response); await tick();
-    assert.match(h.ids.notice.textContent, expected);
+    if (expected === '') assert.equal(h.ids.notice.textContent, '');
+    else assert.match(h.ids.notice.textContent, expected);
     assert.equal(h.cards()[0].children.find((node) => node.className === 'card-title').textContent, saved.title);
+    assert.equal(h.cards()[0].draggable, false, 'hiding the banner must not permit stale writes');
+    assert.match(h.cards()[0].className, /stale/);
+    assert.match(h.ids.summary.textContent, /数据过期/);
   }
 });
 
@@ -378,4 +399,80 @@ test('search Escape during IME composition keeps the dialog open and query intac
   assert.equal(h.links.length, 0);
   h.ids.search.listeners.keydown({ key: 'Escape', isComposing: false, preventDefault() {} });
   assert.equal(h.ids['search-dialog'].open, false);
+});
+
+
+const projectKey = (h, key) => h.ids['project-search'].listeners.keydown({ key, preventDefault() {} });
+
+test('project popup filters name and full path and sends the selected cwd', async () => {
+  const workspaces = [{ cwd: '/code/product', name: '产品项目' }, { cwd: '/code/special-path', name: '另一个项目' }];
+  const h = await harness([thread()], workspaces); h.ids['project-toggle'].listeners.click();
+  h.ids['project-search'].value = '产品'; h.ids['project-search'].listeners.input();
+  assert.equal(h.ids['project-list'].children.length, 2);
+  assert.equal(h.ids['project-list'].children[1].children[0].textContent, '产品项目');
+  assert.equal(h.calls.length, 0);
+  h.ids['project-search'].value = 'SPECIAL-PATH'; h.ids['project-search'].listeners.input();
+  const row = h.ids['project-list'].children[1];
+  assert.equal(row.title, '/code/special-path');
+  assert.equal(row.children[0].textContent, '另一个项目');
+  projectKey(h, 'Enter');
+  assert.equal(h.ids.workspace.value, '/code/special-path');
+  assert.equal(h.calls[0].args.arguments.cwd, '/code/special-path');
+  assert.equal(h.ids['project-menu'].hidden, true);
+  assert.equal(h.doc.activeElement, h.ids['project-toggle']);
+  h.calls[0].resolve({ structuredContent: { threads: [], workspaces, errors: [], stale: false } }); await tick();
+});
+
+test('project keyboard navigation, Escape and outside click close without unintended filtering', async () => {
+  const h = await harness([thread()], [{ cwd: '/one', name: '项目一' }, { cwd: '/two', name: '项目二' }]);
+  h.ids['project-toggle'].listeners.keydown({ key: 'ArrowDown', preventDefault() {} });
+  projectKey(h, 'ArrowDown'); projectKey(h, 'ArrowDown'); projectKey(h, 'ArrowUp');
+  assert.equal(h.ids['project-search']['aria-activedescendant'], 'project-option-cwd-%2Fone');
+  projectKey(h, 'Escape');
+  assert.equal(h.ids['project-menu'].hidden, true); assert.equal(h.calls.length, 0);
+  assert.equal(h.doc.activeElement, h.ids['project-toggle']);
+  h.ids['project-toggle'].listeners.click();
+  h.doc.listeners.pointerdown({ target: h.ids['project-search'] });
+  assert.equal(h.ids['project-menu'].hidden, false);
+  h.doc.listeners.pointerdown({ target: h.ids.notice });
+  assert.equal(h.ids['project-menu'].hidden, true); assert.equal(h.calls.length, 0);
+});
+
+test('selected project stays visible after a refresh omits it and All projects clears its filter', async () => {
+  const h = await harness([thread()], [{ cwd: '/code/old', name: '旧项目名称' }]);
+  h.ids['project-toggle'].listeners.click(); h.ids['project-list'].children[1].listeners.click();
+  h.calls[0].resolve(result([thread()])); await tick();
+  assert.equal(h.ids.workspace.value, '/code/old');
+  assert.equal(h.ids['project-label'].textContent, '旧项目名称');
+  assert.equal(h.ids['project-toggle'].title, '旧项目名称\n/code/old');
+  h.ids['project-toggle'].listeners.click();
+  const selected = h.ids['project-list'].children[1];
+  assert.equal(selected['aria-selected'], 'true');
+  assert.equal(selected.children.length, 2); // Name and checked icon.
+  h.ids['project-search'].value = '无匹配项目'; h.ids['project-search'].listeners.input();
+  assert.match(h.ids['project-empty'].textContent, /没有匹配项目/);
+  assert.equal(h.ids['project-list'].children[0].children[0].textContent, '所有项目');
+  h.ids['project-list'].children[0].listeners.click();
+  assert.equal(h.calls[1].args.arguments.cwd, '');
+  h.calls[1].resolve(result([thread()])); await tick();
+});
+
+
+test('theme paints html and body canvas over an embedded white background', async () => {
+  const h = await harness([thread()]);
+  const assertCanvas = (theme) => {
+    for (const canvas of [h.root, h.doc.body]) {
+      assert.equal(canvas.style.getPropertyValue('background'), 'var(--bg)');
+      assert.equal(canvas.style.getPropertyPriority('background'), '');
+      assert.equal(canvas.style.colorScheme, theme);
+    }
+  };
+  assertCanvas('light');
+  h.doc.body.style.setProperty('background', 'white');
+  h.hostContextChanged({ theme: 'dark' });
+  assertCanvas('dark');
+  h.ids['theme-toggle'].listeners.click(); assertCanvas('light');
+  h.hostContextChanged({ theme: 'dark' }); assertCanvas('light');
+  assert.equal(h.root.dataset.themeOverride, 'light');
+  h.ids['theme-toggle'].listeners.click(); assertCanvas('dark');
 });

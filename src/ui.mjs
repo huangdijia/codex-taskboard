@@ -2,7 +2,7 @@ import { App, applyDocumentTheme, applyHostStyleVariables, applyHostFonts } from
 
 const statuses = ["InProgress", "Review", "Done"];
 const byId = (id) => document.getElementById(id);
-const app = new App({ name: "Codex TaskBoard", version: "0.2.6" }, {});
+const app = new App({ name: "Codex TaskBoard", version: "0.2.8" }, {});
 const state = {
   data: null, connected: false, busy: false, refreshPending: false,
   filterVersion: 0, activeLoadStarted: false, dragging: null, actionError: "", searchExpanded: false, searchSelectedId: null, searchResults: [], searchOpening: false, searchError: "", searchReadError: "", dataVersion: -1, projectOpen: false, projectActiveCwd: null, projectResults: [], hostTheme: "light", manualTheme: null,
@@ -30,6 +30,14 @@ function errorSummary(errors = []) {
   }
   for (const [code, ids] of groups) messages.push(`${ids.size} 个聊天的${reasons[code]}，无法确认最新状态`);
   return [...new Set(messages)].join("；");
+}
+function readNotice(data) {
+  // Missing historical files cannot be recovered here; keep stale cards without a global banner.
+  const visibleErrors = (data.errors || []).filter((error) => !(error.threadId && error.code === "ROLLOUT_MISSING"));
+  if (data.errors?.length && !visibleErrors.length) return "";
+  return errorSummary(visibleErrors) || (data.stale
+    ? globalStale(data) ? "当前数据已过期，请刷新后再验收或重新打开。" : "部分任务数据已过期，请刷新异常任务后再操作。"
+    : "");
 }
 function errorMessage(result) {
   const errors = result?.structuredContent?.errors;
@@ -219,6 +227,8 @@ function render() {
   const previousLabel = Array.from(select.options).find((option) => option.value === selected)?.textContent;
   select.replaceChildren(new Option("所有项目", ""));
   for (const workspace of data.workspaces || []) {
+    // Empty cwd means "all" in the tool contract, not a selectable project.
+    if (!workspace.cwd) continue;
     const option = new Option(workspace.name || shortCwd(workspace.cwd), workspace.cwd);
     option.title = workspace.cwd || "无项目";
     select.add(option);
@@ -267,9 +277,7 @@ function receive(result) {
   state.data = data;
   state.dataVersion = state.filterVersion;
   state.searchReadError = "";
-  notice(errorSummary(data.errors) || state.actionError || (data.stale
-    ? globalStale(data) ? "当前数据已过期，请刷新后再验收或重新打开。" : "部分任务数据已过期，请刷新异常任务后再操作。"
-    : ""));
+  notice(readNotice(data) || state.actionError);
   render();
 }
 function failed(error) {
@@ -358,8 +366,10 @@ function renderProjectPicker() {
   }
   list.scrollTop = scrollTop;
   byId("project-empty").textContent = query && !matches.some((option) => option.value) ? "没有匹配项目" : "";
+  const preferred = matches.find((option) => option.value === select.value && (!query || option.value))
+    || (query ? matches.find((option) => option.value) : matches[0]);
   const active = matches.some((option) => option.value === state.projectActiveCwd) ? state.projectActiveCwd
-    : matches.find((option) => option.value === select.value)?.value ?? matches[0]?.value ?? null;
+    : preferred?.value ?? matches[0]?.value ?? null;
   selectProjectActive(active);
 }
 function toggleProject(open = !state.projectOpen, focus = true) {
@@ -493,6 +503,11 @@ function updateTheme() {
   applyDocumentTheme(current);
   if (state.manualTheme) document.documentElement.dataset.themeOverride = state.manualTheme;
   else delete document.documentElement.dataset.themeOverride;
+  // The SDK sets theme metadata, but an embedded body may retain a host white background.
+  for (const canvas of [document.documentElement, document.body]) {
+    canvas.style.setProperty("background", "var(--bg)");
+    canvas.style.colorScheme = current;
+  }
   const button = byId("theme-toggle");
   const label = `切换为${current === "dark" ? "浅色" : "深色"}主题（仅当前页面）`;
   button.setAttribute("aria-label", label); button.title = label;

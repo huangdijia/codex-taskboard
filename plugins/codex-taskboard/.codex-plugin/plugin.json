@@ -1,6 +1,6 @@
 {
   "name": "codex-taskboard",
-  "version": "0.2.6",
+  "version": "0.2.8",
   "description": "A local Codex thread board with manual user acceptance.",
   "author": { "name": "Local development" },
   "keywords": ["codex", "threads", "taskboard", "mcp", "mcp-app"],

@@ -36963,7 +36963,7 @@ function createTaskBoardStore({ nativeDbPath, dataDirectory: dataDirectory2, pro
       isSubagent: source.isSubagent,
       sourceType: source.sourceType
     };
-    const knownUserTurns = new Set(observer.users.filter((user) => user.turnId.trim()).map((user) => user.turnId)).size;
+    const knownUserTurns = new Set(observer.users.filter((user) => user.turnId.trim() && user.key.slice(user.turnId.length + 1).trim()).map((user) => user.turnId)).size;
     const messageTurnCount = stale || !observer.hasCompleteUserTurnHistory && !knownUserTurns ? null : knownUserTurns;
     const messageTurnCountIncomplete = stale || !observer.hasCompleteUserTurnHistory || Boolean(observer.pending.length);
     const turnRevision = observer.turn ? [
@@ -37111,7 +37111,7 @@ var icon = {
   mimeType: "image/svg+xml",
   sizes: ["20x20"]
 };
-var server = new McpServer({ name: "codex-taskboard", version: "0.2.6", icons: [icon] }, {
+var server = new McpServer({ name: "codex-taskboard", version: "0.2.8", icons: [icon] }, {
   instructions: "Read Codex thread status with taskboard.list_threads. Status is inferred from recorded events, not live process telemetry. User acceptance and reopening are performed only through the Codex TaskBoard app."
 });
 var threadSchema = external_exports.object({
