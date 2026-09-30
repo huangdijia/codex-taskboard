@@ -1,0 +1,20 @@
+{
+  "name": "taskboard-local",
+  "interface": {
+    "displayName": "TaskBoard local development"
+  },
+  "plugins": [
+    {
+      "name": "codex-taskboard",
+      "source": {
+        "source": "local",
+        "path": "./plugins/codex-taskboard"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Productivity"
+    }
+  ]
+}
