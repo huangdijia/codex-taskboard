@@ -1,0 +1,25 @@
+{
+  "mcpServers": {
+    "codex-taskboard": {
+      "command": "/bin/sh",
+      "args": [
+        "-c",
+        "exec \"${CODEX_MCP_NODE_PATH:-node}\" ./dist/server.mjs \"$@\"",
+        "--"
+      ],
+      "cwd": ".",
+      "env_vars": [
+        "PATH",
+        "CODEX_MCP_NODE_PATH",
+        "PLUGIN_DATA",
+        "CODEX_HOME",
+        "TASKBOARD_DATA_DIR",
+        "TASKBOARD_CODEX_DB"
+      ],
+      "tool_timeout_sec": 120,
+      "env": {
+        "PLUGIN_DATA": "${PLUGIN_DATA}"
+      }
+    }
+  }
+}

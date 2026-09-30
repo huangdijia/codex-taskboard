@@ -1,0 +1,21 @@
+{
+  "name": "codex-taskboard",
+  "version": "0.2.6",
+  "description": "A local Codex thread board with manual user acceptance.",
+  "author": { "name": "Local development" },
+  "keywords": ["codex", "threads", "taskboard", "mcp", "mcp-app"],
+  "mcpServers": "./.mcp.json",
+  "interface": {
+    "displayName": "Codex TaskBoard",
+    "shortDescription": "Review and accept local Codex threads",
+    "longDescription": "Codex TaskBoard reads local Codex thread records and rollout events, groups threads by workspace and inferred status, and stores manual acceptance in private plugin data.",
+    "developerName": "Local development",
+    "category": "Developer Tools",
+    "capabilities": ["Read", "Write", "Interactive"],
+    "defaultPrompt": ["Show my Codex threads"],
+    "brandColor": "#167D68",
+    "composerIcon": "./assets/icon.svg",
+    "logo": "./assets/icon.svg",
+    "logoDark": "./assets/icon.svg"
+  }
+}
